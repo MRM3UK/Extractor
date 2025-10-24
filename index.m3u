@@ -1,0 +1,1092 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>M3U Stream Forge</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+  <style>
+    /* Mimic Bootstrap's Dark/Light Mode using the existing Tailwind setup */
+    :root { 
+        --bg: #212529; /* Bootstrap Dark background */
+        --card: #343a40; /* Bootstrap Dark Card */
+        --muted: #adb5bd; /* Bootstrap Dark Muted text */
+        --primary: #0d6efd; /* Bootstrap Primary */
+        --success: #198754; /* Bootstrap Success */
+        --danger: #dc3545; /* Bootstrap Danger */
+        --warning: #ffc107; /* Bootstrap Warning */
+        --info: #0dcaf0; /* Bootstrap Info */
+        --text: #f8f9fa; /* Bootstrap Light text */
+    }
+    [data-theme="light"] { 
+        --bg: #f8f9fa; /* Bootstrap Light background */
+        --card: #ffffff; /* Bootstrap Light Card */
+        --muted: #6c757d; /* Bootstrap Light Muted text */
+        --text: #212529; /* Bootstrap Dark text */
+        color-scheme: light; 
+    }
+    body { 
+        background: var(--bg); 
+        color: var(--text); 
+        /* Add padding at the bottom to prevent content being hidden by the fixed navbar */
+        padding-bottom: 50px; 
+    }
+    
+    /* Bootstrap-like Glass/Card */
+    .glass { 
+        background-color: var(--card); 
+        border: 1px solid rgba(255, 255, 255, 0.1); 
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        transition: all 0.2s;
+    }
+    [data-theme="light"] .glass { 
+        border: 1px solid rgba(0, 0, 0, 0.1); 
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.05);
+    }
+
+    /* Bootstrap-like Form Elements */
+    .form-control {
+        width: 100%; 
+        padding: 0.375rem 0.75rem; 
+        border-radius: 0.25rem; 
+        border: 1px solid var(--muted); 
+        background-color: var(--bg); 
+        color: var(--text);
+    }
+    .form-control::placeholder {
+        color: var(--muted);
+        opacity: 0.6;
+    }
+    
+    /* Bootstrap-like Buttons */
+    .btn {
+        padding: 0.5rem 1rem;
+        border-radius: 0.25rem;
+        font-weight: 500;
+        transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        border: 1px solid transparent;
+        color: #fff;
+    }
+    .btn-primary { background-color: var(--primary); border-color: var(--primary); }
+    .btn-primary:hover { background-color: #0b5ed7; border-color: #0a58ca; }
+    .btn-success { background-color: var(--success); border-color: var(--success); }
+    .btn-success:hover { background-color: #157347; border-color: #146c43; }
+    .btn-warning { background-color: var(--warning); border-color: var(--warning); color: #000; }
+    .btn-warning:hover { background-color: #ffcd39; border-color: #ffc720; }
+    .btn-info { background-color: var(--info); border-color: var(--info); color: #000; }
+    .btn-info:hover { background-color: #31d2f2; border-color: #25cff2; }
+    .btn-secondary { background-color: #6c757d; border-color: #6c757d; }
+    .btn-secondary:hover { background-color: #5c636a; border-color: #565e64; }
+    .btn-danger { background-color: var(--danger); border-color: var(--danger); }
+    .btn-danger:hover { background-color: #bb2d3b; border-color: #b02a37; }
+
+    /* Custom styles from original */
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace; }
+    .logo-img { width:36px; height:24px; object-fit:contain; border-radius:4px; background:rgba(255,255,255,0.02); }
+    .scroll-thin::-webkit-scrollbar { width: 6px; }
+    .scroll-thin::-webkit-scrollbar-track { background: var(--bg); }
+    .scroll-thin::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+    .scroll-thin::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+    /* Modal Styling */
+    .player-modal-content {
+      background: var(--bg);
+      border-radius: 8px;
+      overflow: hidden;
+      width: 90%;
+      max-width: 800px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+
+    /* Animation for fetching */
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    .spinner {
+        border: 44px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top: 4px solid var(--success);
+        width: 16px;
+        height: 16px;
+        animation: spin 1s linear infinite;
+        display: inline-block;
+        margin-right: 8px;
+    }
+    
+    /* Player Controls Icons Only Style */
+    .player-ctrl {
+        padding: 0.5rem; /* Make icons feel like buttons */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    /* Search Bar in Player Queue */
+    #queueSearchBox {
+        display: none;
+    }
+    #queueSearchBox.active {
+        display: block;
+    }
+  </style>
+</head>
+<body class="min-h-screen scroll-thin" data-theme="dark">
+
+  <div class="max-w-7xl mx-auto p-3 sm:p-5">
+    
+    <header class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+      <div class="flex items-center gap-3">
+        <span class="text-3xl font-extrabold" style="color: var(--success);">
+            <span class="text-4xl">M</span>
+            <span class="text-2xl" style="color: var(--danger);">S</span>
+            <span class="text-3xl">F</span>
+        </span>
+        <div>
+          <h1 class="text-2xl font-semibold">M3U Stream Forge</h1>
+          <p class="text-sm" style="color: var(--muted);">Advanced Parser & Instant Player</p>
+        </div>
+      </div>
+      </header>
+
+    <main class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      
+      <section class="lg:col-span-1 space-y-6">
+        <div class="glass p-4 rounded-lg">
+            <h2 class="font-medium mb-3 border-b pb-2 text-lg" style="border-color: rgba(255,255,255,0.1); color: var(--success);">Stream Source</h2>
+            <label class="text-xs" style="color: var(--muted);">M3U URL</label>
+            <input id="m3uUrl" type="url" placeholder="https://..." class="form-control mb-2" />
+            <div class="flex gap-2 mb-4">
+              <button id="fetchBtn" class="btn btn-success flex-1 text-sm">Fetch (Direct)</button>
+              <button id="fetchProxyBtn" class="btn btn-warning text-sm" title="Try via AllOrigins proxy">AllOrigins</button>
+              <button id="fetchMireBtn" class="btn btn-info text-sm" title="Try via Mire.pro proxy">Mire Proxy</button>
+            </div>
+            <p id="fetchStatus" class="text-xs text-warning flex items-center"></p>
+        </div>
+
+        <div class="glass p-4 rounded-lg">
+            <h2 class="font-medium mb-2 text-lg" style="color: var(--danger);">Full EXT-M3U (editable)</h2>
+            <textarea id="fullM3U" rows="15" class="form-control mono mb-2"></textarea>
+            <div class="flex gap-2">
+              <button id="reparseFull" class="btn btn-primary flex-1">Re-parse</button>
+              <button id="clearFull" class="btn btn-secondary">Clear</button>
+            </div>
+
+            <hr class="my-3" style="border-color: rgba(255,255,255,0.1);" />
+
+            <button id="copyFullM3U" class="btn btn-primary w-full text-sm font-medium mb-3">Copy All M3U Text</button>
+            
+            <label class="text-xs" style="color: var(--muted);">Links</label>
+            <textarea id="linksOnly" rows="4" readonly class="form-control mono"></textarea>
+            <div class="flex gap-2 mt-2">
+              <button id="copyLinks" class="btn btn-danger flex-1">Copy Links</button>
+              <button id="downloadLinks" class="btn btn-danger">Download</button>
+            </div>
+        </div>
+
+      </section>
+
+      <section id="playlistBrowserSection" class="lg:col-span-2 glass p-4 rounded-lg hidden">
+        <div class="flex items-center justify-between mb-3 border-b pb-2" style="border-color: rgba(255,255,255,0.1);">
+          <h2 class="font-medium text-lg" style="color: var(--danger);">Playlist Browser</h2>
+          <div class="text-sm" style="color: var(--muted);">
+             Groups: <span id="countGroups">0</span> | Channels: <span id="countFound">0</span>
+          </div>
+        </div>
+        
+        <div class="flex gap-2 mb-3">
+             <input id="searchBox" placeholder="Search title / url..." class="form-control flex-1" />
+             <select id="groupFilter" class="form-control w-1/3">
+                 <option value="">All Groups</option>
+             </select>
+        </div>
+
+        <div class="h-[75vh] overflow-auto scroll-thin" id="playlistContainer">
+          </div>
+
+        <div class="flex gap-2 mt-3">
+          <button id="copyFiltered" class="btn btn-danger flex-1 text-sm">Copy Playlist</button>
+          <button id="downloadFiltered" class="btn btn-danger text-sm">Download Filtered M3U</button>
+        </div>
+      </section>
+
+      <section class="lg:col-span-1 space-y-6">
+        <div class="glass p-4 rounded-lg flex flex-col">
+          <div class="flex items-center justify-between mb-3 border-b pb-2" style="border-color: rgba(255,255,255,0.1);">
+            <h2 class="font-medium text-lg" style="color: var(--info);">Main Player</h2>
+            <div class="flex items-center gap-2 text-sm">
+              <label class="flex items-center gap-1 text-xs" style="color: var(--muted);"><input id="autoNext" type="checkbox" style="accent-color: var(--success);"> Auto</label>
+              <button id="pipBtn" class="btn btn-secondary py-1 px-2 text-sm">PiP</button>
+            </div>
+          </div>
+
+          <div class="flex gap-2 mb-2">
+            <input id="playerSearchBox" placeholder="Search & Select Stream..." class="form-control flex-1" list="streamListOptions"/>
+            <datalist id="streamListOptions"></datalist>
+            <button id="playBtn" class="btn btn-success p-2 player-ctrl" title="Play Stream"><i class="material-icons">play_arrow</i></button>
+          </div>
+
+          <div class="aspect-video bg-black rounded overflow-hidden mb-3">
+            <video id="video" controls playsinline class="w-full h-full bg-black"></video>
+          </div>
+          
+          <p id="playerTitle" class="text-base font-medium truncate mb-2" style="color: var(--text);">Select a stream to play...</p>
+
+          <div class="flex gap-2">
+            <button id="stopBtn" class="btn btn-danger player-ctrl" title="Stop"><i class="material-icons">stop</i></button>
+            <button id="prevBtn" class="btn btn-secondary player-ctrl" title="Previous Channel"><i class="material-icons">skip_previous</i></button>
+            <button id="nextBtn" class="btn btn-secondary player-ctrl" title="Next Channel"><i class="material-icons">skip_next</i></button>
+            <button id="favBtn" class="btn btn-warning flex-1 player-ctrl" title="Toggle Favorite"><i class="material-icons">star_border</i> <span id="favText">Favorite</span></button>
+          </div>
+
+          <p id="playerMsg" class="text-sm mt-3" style="color: var(--muted);"></p>
+        </div>
+
+        <div class="glass p-4 rounded-lg">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="font-medium text-lg" style="color: var(--primary);">Player Queue</h3>
+                <button id="toggleQueueSearch" class="p-1 rounded btn-secondary" title="Search Queue">
+                    <i class="material-icons text-sm">search</i>
+                </button>
+            </div>
+            <input id="queueSearchBox" placeholder="Search in queue..." class="form-control mb-2" />
+
+            <p class="text-xs mb-2" style="color: var(--muted);">Click a channel to instantly play.</p>
+            <div id="playerQueueList" class="h-40 overflow-auto scroll-thin space-y-1 text-sm">
+                </div>
+        </div>
+        
+        <div class="glass p-4 rounded-lg">
+            <h3 class="text-sm mb-2 font-medium">Playlist Storage</h3>
+            <select id="savedList" class="form-control mb-2"></select>
+            <div class="flex gap-2">
+                <button id="loadPlaylistBtn" class="btn btn-primary flex-1 text-sm">Load</button>
+                <button id="savePlaylist" class="btn btn-secondary text-sm">Save</button>
+                <button id="deleteSaved" class="btn btn-danger text-sm">Del</button>
+            </div>
+        </div>
+
+      </section>
+    </main>
+
+    <footer class="mt-6 text-center" style="color: var(--muted);">
+      </footer>
+  </div>
+  
+  <div id="popupPlayerModal" class="fixed inset-0 hidden items-center justify-center bg-black/80 z-50">
+      <div class="player-modal-content">
+          <div class="p-3 flex items-center justify-between border-b" style="border-color: rgba(255,255,255,0.1);">
+              <h3 id="popupTitle" class="text-lg font-medium truncate" style="color: var(--text);">Popup Player</h3>
+              <button id="closePopup" class="text-xl text-danger hover:opacity-80">&times;</button>
+          </div>
+          <div class="p-3">
+              <div class="aspect-video bg-black rounded overflow-hidden">
+                <video id="popupVideo" controls playsinline class="w-full h-full bg-black"></video>
+              </div>
+          </div>
+      </div>
+  </div>
+
+
+  <div class="fixed bottom-0 left-0 right-0 glass z-50 shadow-lg" style="height: 50px; padding: 0;">
+      <nav class="max-w-7xl mx-auto flex justify-around h-full">
+          <a href="https://m3-u-playlist-creator.vercel.app/#" class="flex-1 flex items-center justify-center p-1" title="M3U Editor" target="_blank" style="color: var(--info); transition: all 0.2s;">
+              <i class="material-icons text-2xl">edit</i>
+          </a>
+          <a href="https://t.me/TECH_HOUSE_01" class="flex-1 flex items-center justify-center p-1" title="Join Telegram" target="_blank" style="color: var(--info); transition: all 0.2s;">
+              <i class="material-icons text-2xl">send</i>
+          </a>
+          <a href="https://iptvx.vercel.app" class="flex-1 flex items-center justify-center p-1" title="Live TV Player" target="_blank" style="color: var(--info); transition: all 0.2s;">
+              <i class="material-icons text-2xl">live_tv</i>
+          </a>
+      </nav>
+  </div>
+
+
+  <script>
+  /*******************************
+   * M3U Stream Forge v7 - MODIFIED
+   *******************************/
+
+  // DOM refs (kept concise)
+  const m3uUrl = document.getElementById('m3uUrl');
+  const fetchBtn = document.getElementById('fetchBtn');
+  const fetchProxyBtn = document.getElementById('fetchProxyBtn');
+  const fetchMireBtn = document.getElementById('fetchMireBtn'); // NEW: Mire Proxy Button
+  const fetchStatus = document.getElementById('fetchStatus');
+  
+  // Full M3U Edit Refs
+  const fullM3U = document.getElementById('fullM3U');
+  const reparseFull = document.getElementById('reparseFull');
+  const clearFull = document.getElementById('clearFull');
+  const linksOnly = document.getElementById('linksOnly');
+  const copyLinks = document.getElementById('copyLinks');
+  const downloadLinks = document.getElementById('downloadLinks');
+  const copyFullM3U = document.getElementById('copyFullM3U'); 
+
+  const playlistBrowserSection = document.getElementById('playlistBrowserSection');
+  const playlistContainer = document.getElementById('playlistContainer');
+  const searchBox = document.getElementById('searchBox');
+  const groupFilter = document.getElementById('groupFilter'); 
+  const countFound = document.getElementById('countFound');
+  const countGroups = document.getElementById('countGroups'); 
+  const copyFiltered = document.getElementById('copyFiltered');
+  const downloadFiltered = document.getElementById('downloadFiltered');
+
+  // Main Player Refs
+  const playerSearchBox = document.getElementById('playerSearchBox');
+  const streamListOptions = document.getElementById('streamListOptions');
+  const playBtn = document.getElementById('playBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const videoEl = document.getElementById('video');
+  const playerTitle = document.getElementById('playerTitle');
+  const playerMsg = document.getElementById('playerMsg');
+  const favBtn = document.getElementById('favBtn');
+  const favText = document.getElementById('favText');
+  const pipBtn = document.getElementById('pipBtn');
+  const autoNext = document.getElementById('autoNext');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const playerQueueList = document.getElementById('playerQueueList'); 
+  
+  // Queue Search Refs
+  const toggleQueueSearch = document.getElementById('toggleQueueSearch');
+  const queueSearchBox = document.getElementById('queueSearchBox'); // NEW
+
+  // Storage Refs
+  const savePlaylist = document.getElementById('savePlaylist');
+  const loadPlaylistBtn = document.getElementById('loadPlaylistBtn');
+  const savedList = document.getElementById('savedList');
+  const deleteSaved = document.getElementById('deleteSaved');
+
+  // Popup Player Refs
+  const popupPlayerModal = document.getElementById('popupPlayerModal');
+  const popupVideo = document.getElementById('popupVideo');
+  const popupTitle = document.getElementById('popupTitle');
+  const closePopup = document.getElementById('closePopup');
+  
+  // state
+  let entries = []; 
+  let filteredEntries = [];
+  let hlsMain = null;
+  let hlsPopup = null;
+  let currentEntryMain = null;
+  let rawM3UText = ''; 
+
+  // localStorage keys (kept the same version for compatibility)
+  const LS_LAST = 'm3u_last_playlist_v4';
+  const LS_SAVED = 'm3u_saved_playlists_v4';
+  const LS_THEME = 'm3u_theme_v4';
+  const LS_FAVS = 'm3u_favs_v4';
+  const LS_LAST_PLAYED_URL = 'm3u_last_played_url_v4';
+
+  /********** utilities **********/
+  function parseAttributes(attrString) {
+    const attrs = {};
+    const re = /([a-zA-Z0-9\-]+)=(?:"([^"]*)"|'([^']*)'|([^,\s]*))/g;
+    let m;
+    while ((m = re.exec(attrString)) !== null) {
+      const key = m[1];
+      const val = m[2] ?? m[3] ?? m[4] ?? '';
+      attrs[key] = val;
+    }
+    return attrs;
+  }
+
+  function entriesToM3U(en) {
+    let output = '#EXTM3U\n';
+    en.forEach(e => {
+        if (e.rawMeta) {
+            output += e.rawMeta.trim() + '\n';
+        } else {
+            // Reconstruct minimal EXTINF if rawMeta is missing
+            let extinf = '#EXTINF:-1';
+            if (e.group && e.group !== 'Ungrouped') extinf += ` group-title="${e.group}"`;
+            if (e.logo) extinf += ` tvg-logo="${e.logo}"`;
+            extinf += `,${e.title}\n`;
+            output += extinf;
+        }
+        output += e.url + '\n';
+    });
+    return output.trim();
+  }
+
+  function parseM3U(text) {
+    rawM3UText = text; 
+    const lines = text.split(/\r?\n/);
+    const result = [];
+    let lastMeta = null;
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i].trim();
+      if (!raw) continue;
+      if (raw.startsWith('#EXTINF')) {
+        lastMeta = raw;
+        continue;
+      }
+      if (raw.startsWith('#')) continue;
+      const url = raw;
+      let title = url;
+      let group = 'Ungrouped';
+      let logo = '';
+      let rawMeta = lastMeta;
+      if (lastMeta) {
+        const commaIndex = lastMeta.indexOf(',');
+        if (commaIndex !== -1) {
+          title = lastMeta.slice(commaIndex + 1).trim() || url;
+        }
+        const attrsPart = lastMeta.slice(0, commaIndex !== -1 ? commaIndex : lastMeta.length);
+        const attrs = parseAttributes(attrsPart);
+        if (attrs['group-title']) group = attrs['group-title'];
+        if (attrs['tvg-logo']) logo = attrs['tvg-logo'];
+      }
+      result.push({ url, title, rawMeta, group, logo, fav: false, searchable: (title + ' ' + group + ' ' + url).toLowerCase() });
+      lastMeta = null;
+    }
+    return result;
+  }
+
+  function entriesToLinks(en) {
+    return en.map(e => e.url).join('\n');
+  }
+
+  function updateLinksAndM3UBoxes(text, parsedEntries) {
+    rawM3UText = text;
+    fullM3U.value = text;
+    linksOnly.value = entriesToLinks(parsedEntries);
+  }
+  
+  // Helper: download
+  function downloadFile(filename, content) {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a);
+    a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+
+  /********** Theme Controls (Minimized for removed toggle) **********/
+  // Only restore theme on load
+  (function(){
+    const t = localStorage.getItem(LS_THEME) || 'dark';
+    document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+  })();
+
+  /********** Storage **********/
+  function saveLastPlaylist() {
+    localStorage.setItem(LS_LAST, JSON.stringify({ rawM3U: rawM3UText, entries: entries, timestamp: Date.now() }));
+  }
+  
+  function loadSavedListNames() {
+    const raw = localStorage.getItem(LS_SAVED);
+    const saved = raw ? JSON.parse(raw) : {};
+    savedList.innerHTML = '<option value="">-- Load Saved Playlist --</option>';
+    Object.keys(saved).sort().forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      savedList.appendChild(opt);
+    });
+  }
+
+  function persistFavs() {
+    const favs = {};
+    entries.forEach(e => { if (e.fav) favs[e.url] = true; });
+    localStorage.setItem(LS_FAVS, JSON.stringify(favs));
+    renderPlaylist(searchBox.value, groupFilter.value, queueSearchBox.value); 
+    if (currentEntryMain) {
+        // Update main player favorite icon/text
+        const isFav = currentEntryMain.fav;
+        favBtn.innerHTML = isFav ? '<i class="material-icons">star</i> <span id="favText">Favorited</span>' : '<i class="material-icons">star_border</i> <span id="favText">Favorite</span>';
+        favBtn.classList.toggle('bg-amber-600', isFav);
+    }
+  }
+
+  /********** Group Filter Setup **********/
+  function updateGroupFilter() {
+      const groups = new Set(entries.map(e => e.group).filter(g => g && g !== 'Ungrouped'));
+      const currentSelectedGroup = groupFilter.value;
+      groupFilter.innerHTML = '<option value="">All Groups</option>';
+      groups.forEach(g => {
+          const opt = document.createElement('option');
+          opt.value = g;
+          opt.textContent = g;
+          if (g === currentSelectedGroup) opt.selected = true;
+          groupFilter.appendChild(opt);
+      });
+      countGroups.textContent = groups.size + (groups.has('Ungrouped') ? 1 : 0);
+  }
+
+  /********** rendering playlist & queue **********/
+  function renderPlaylist(searchFilter='', groupFilterValue='', queueSearchFilter='') {
+    const groups = {};
+    filteredEntries = [];
+    const q = searchFilter.trim().toLowerCase();
+    const g = groupFilterValue.trim();
+    const qq = queueSearchFilter.trim().toLowerCase(); // Queue search filter
+
+    // 1. Filter entries (Only one filtering logic needed for playlist browser)
+    for (const e of entries) {
+      if (q && !e.searchable.includes(q)) continue;
+      if (g && e.group !== g) continue;
+
+      if (!groups[e.group]) groups[e.group] = [];
+      groups[e.group].push(e);
+      filteredEntries.push(e);
+    }
+
+    countFound.textContent = filteredEntries.length;
+
+    // 2. Render main playlist browser
+    playlistContainer.innerHTML = '';
+    const groupNames = Object.keys(groups).sort((a,b)=>a.localeCompare(b));
+    
+    if (groupNames.length === 0 && entries.length > 0) {
+      playlistContainer.innerHTML = `<div class="text-sm p-4" style="color: var(--muted);">No channels match the search query/filter.</div>`;
+    } else if (entries.length === 0) {
+       playlistContainer.innerHTML = `<div class="text-sm p-4" style="color: var(--muted);">No channels loaded. Parse a list first.</div>`;
+    } else {
+      for (const groupName of groupNames) {
+        const arr = groups[groupName];
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'mb-4';
+        const header = document.createElement('div');
+        header.className = 'flex items-center justify-between p-2 mb-1 rounded-t';
+        header.style.backgroundColor = '#495057'; // Bootstrap Secondary Darker
+        header.innerHTML = `<div class="flex items-center gap-2 font-bold">${groupName}</div><span class="text-xs" style="color: var(--muted);">${arr.length}</span>`;
+        groupDiv.appendChild(header);
+
+        const list = document.createElement('div');
+        list.className = 'space-y-1 rounded-b p-2 border';
+        list.style.backgroundColor = 'var(--card)';
+        list.style.borderColor = 'rgba(255,255,255,0.1)';
+        arr.forEach((e) => {
+            const item = document.createElement('div');
+            item.className = 'flex items-center gap-2 p-1 rounded hover:opacity-80 group';
+            
+            // Channel Info (clickable for Auto Play in Main Player)
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'flex-1 min-w-0 flex items-center gap-2 cursor-pointer';
+            infoDiv.onclick = () => { selectAndAutoPlayMain(e); };
+            
+            const logoWrap = document.createElement('div');
+            logoWrap.className = 'w-8 flex-shrink-0';
+            if (e.logo) {
+                const img = document.createElement('img');
+                img.src = e.logo;
+                img.alt = e.title;
+                img.className = 'logo-img';
+                img.onerror = () => { img.style.display = 'none'; };
+                logoWrap.appendChild(img);
+            } else {
+                logoWrap.innerHTML = `<div class="w-8 h-5 rounded" style="background-color: var(--bg);"></div>`;
+            }
+            infoDiv.appendChild(logoWrap);
+            infoDiv.innerHTML += `<div class="min-w-0"><div class="text-sm font-medium truncate">${e.title}</div><div class="text-xs truncate mono" style="color: var(--muted);">${e.url}</div></div>`;
+
+            const btns = document.createElement('div');
+            btns.className = 'flex items-center gap-2 flex-shrink-0';
+            
+            // Play Button (Popup) - Changed to Icon
+            const playPopup = document.createElement('button');
+            playPopup.className = 'btn btn-success p-1 rounded text-xs';
+            playPopup.innerHTML = '<i class="material-icons text-base">play_arrow</i>';
+            playPopup.onclick = () => { playInPopup(e); }; 
+
+            // Copy & Favorite - Changed to Icons
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'btn btn-secondary p-1 rounded text-xs';
+            copyBtn.innerHTML = '<i class="material-icons text-base">content_copy</i>';
+            copyBtn.onclick = async () => { await navigator.clipboard.writeText(e.url); alert('Copied URL'); };
+            const favToggle = document.createElement('button');
+            favToggle.className = 'btn p-1 rounded text-xs';
+            favToggle.style.backgroundColor = e.fav ? 'var(--warning)' : '#6c757d';
+            favToggle.innerHTML = e.fav ? '<i class="material-icons text-base">star</i>' : '<i class="material-icons text-base">star_border</i>';
+            favToggle.onclick = () => { 
+                e.fav = !e.fav; 
+                favToggle.style.backgroundColor = e.fav ? 'var(--warning)' : '#6c757d';
+                favToggle.innerHTML = e.fav ? '<i class="material-icons text-base">star</i>' : '<i class="material-icons text-base">star_border</i>';
+                persistFavs(); 
+            };
+
+            btns.appendChild(playPopup);
+            btns.appendChild(copyBtn);
+            btns.appendChild(favToggle);
+
+            item.appendChild(infoDiv);
+            item.appendChild(btns);
+            list.appendChild(item);
+        });
+
+        groupDiv.appendChild(list);
+        playlistContainer.appendChild(groupDiv);
+      }
+    }
+
+    // 3. Update Player Datalist and Queue
+    streamListOptions.innerHTML = '';
+    playerQueueList.innerHTML = '';
+    
+    // Filter queue list based on new queueSearchFilter
+    const queueEntries = filteredEntries.filter(e => !qq || e.searchable.includes(qq));
+
+    queueEntries.forEach((e, i) => {
+        const opt = document.createElement('option');
+        opt.value = e.title;
+        opt.dataset.url = e.url;
+        streamListOptions.appendChild(opt);
+
+        const queueItem = document.createElement('div');
+        queueItem.className = 'cursor-pointer hover:opacity-80 truncate p-1 rounded';
+        // Highlight current playing item in queue
+        if (currentEntryMain && currentEntryMain.url === e.url) {
+            queueItem.classList.add('font-bold');
+            queueItem.style.color = 'var(--info)';
+        }
+        queueItem.textContent = `${i+1}. ${e.title} (${e.group})`;
+        queueItem.onclick = () => { selectAndAutoPlayMain(e); };
+        playerQueueList.appendChild(queueItem);
+    });
+    if (queueEntries.length === 0) {
+        playerQueueList.innerHTML = `<p style="color: var(--muted);">No channels match the queue search/filters.</p>`;
+    }
+    
+    // Show/hide playlist browser section
+    if (entries.length > 0) {
+        playlistBrowserSection.classList.remove('hidden');
+    } else {
+        playlistBrowserSection.classList.add('hidden');
+    }
+  }
+
+  // Queue Search Toggle Logic
+  toggleQueueSearch.addEventListener('click', () => {
+      queueSearchBox.classList.toggle('active');
+      if (queueSearchBox.classList.contains('active')) {
+          queueSearchBox.focus();
+      } else {
+          queueSearchBox.value = '';
+          renderPlaylist(searchBox.value, groupFilter.value, ''); // Re-render queue without filter
+      }
+  });
+
+  queueSearchBox.addEventListener('input', () => {
+    renderPlaylist(searchBox.value, groupFilter.value, queueSearchBox.value);
+  });
+  // ... (rest of the functions remain the same) ...
+
+  /********** parse & update flow **********/
+  function updateFromText(text) {
+    try {
+      entries = parseM3U(text);
+      // load favs
+      const favs = JSON.parse(localStorage.getItem(LS_FAVS) || '{}');
+      entries.forEach(e => { e.fav = !!favs[e.url]; });
+      
+      updateLinksAndM3UBoxes(text, entries);
+      updateGroupFilter(); 
+      renderPlaylist(searchBox.value, groupFilter.value, queueSearchBox.value); 
+      saveLastPlaylist();
+    } catch (err) {
+      alert('Parse failed: ' + err.message);
+    }
+  }
+  
+  /********** fetch handlers w/ optional proxy **********/
+  // Updated fetchText to support Mire proxy
+  async function fetchText(url, useProxy=false, useMireProxy=false) {
+    try {
+      let target = url;
+      let proxyName = 'Direct';
+
+      if (useMireProxy) {
+        target = 'https://mire.pro/corsproxy.php?url=' + encodeURIComponent(url);
+        proxyName = 'Mire';
+      } else if (useProxy) {
+        target = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+        proxyName = 'AllOrigins';
+      }
+
+      const res = await fetch(target);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      return text;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  function startFetch(url, useProxy, useMireProxy) {
+    let proxyName = 'Direct';
+    if (useMireProxy) proxyName = 'Mire';
+    else if (useProxy) proxyName = 'AllOrigins';
+
+    fetchStatus.innerHTML = `<span class="spinner"></span>Fetching... (${proxyName})`;
+    const isShortLink = url.includes('is.gd/') || url.includes('bit.ly/') || url.includes('tinyurl.com/');
+
+    // Auto-proxy for short links
+    if (isShortLink && !useProxy && !useMireProxy) {
+        // Default to AllOrigins if it's a short link and no explicit proxy selected
+        useProxy = true; 
+        proxyName = 'AllOrigins';
+        fetchStatus.innerHTML = `<span class="spinner"></span>Fetching (Short Link -> Auto AllOrigins)...`;
+    }
+
+    fetchText(url, useProxy, useMireProxy)
+      .then(txt => {
+        updateFromText(txt);
+        fetchStatus.innerHTML = 'Fetched successfully.';
+      })
+      .catch(e => {
+        fetchStatus.innerHTML = `Fetch failed: ${e.message}`;
+      });
+  }
+
+
+  /********** player controls **********/
+  function stopPlayback(hlsInstance, videoElement) {
+    if (hlsInstance) { try { hlsInstance.destroy(); } catch (e) {} hlsInstance = null; }
+    videoElement.pause();
+    videoElement.removeAttribute('src');
+    videoElement.load();
+    return hlsInstance;
+  }
+
+  function playStream(url, videoElement, isPopup = false, entry = null) {
+      let hlsInstance = isPopup ? hlsPopup : hlsMain;
+
+      hlsInstance = stopPlayback(hlsInstance, videoElement);
+
+      if (isPopup) {
+          hlsPopup = hlsInstance;
+          popupTitle.textContent = entry.title;
+      } else {
+          hlsMain = hlsInstance;
+          currentEntryMain = entry;
+          playerTitle.textContent = currentEntryMain.title;
+          
+          // Update fav button text/icon
+          const isFav = currentEntryMain.fav;
+          favBtn.innerHTML = isFav ? '<i class="material-icons">star</i> <span id="favText">Favorited</span>' : '<i class="material-icons">star_border</i> <span id="favText">Favorite</span>';
+          
+          playerMsg.textContent = `Loading: ${currentEntryMain.title}`;
+          localStorage.setItem(LS_LAST_PLAYED_URL, url);
+          renderPlaylist(searchBox.value, groupFilter.value, queueSearchBox.value); // Re-render to highlight queue item
+      }
+
+      const isHls = url.split('?')[0].toLowerCase().endsWith('.m3u8');
+
+      if (isHls && Hls.isSupported()) {
+          hlsInstance = new Hls();
+          hlsInstance.loadSource(url);
+          hlsInstance.attachMedia(videoElement);
+          hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
+              videoElement.play().catch(()=>{});
+              if (!isPopup) playerMsg.textContent = `Playing: ${entry.title} (HLS.js)`;
+          });
+          hlsInstance.on(Hls.Events.ERROR, function(e, data) {
+              if (isPopup) {
+                  // Fallback for popup
+                  videoElement.src = url;
+                  videoElement.play().catch(err => {});
+              } else {
+                  playerMsg.textContent = `HLS error: ${data.type}. Trying native...`;
+                  videoElement.src = url;
+                  videoElement.play().catch(err => playerMsg.textContent = 'Playback blocked/failed: ' + err.message);
+              }
+          });
+      } else {
+          videoElement.src = url;
+          videoElement.play().then(()=> {
+              if (!isPopup) playerMsg.textContent = `Playing: ${entry.title} (Native)`;
+          }).catch(err=>{
+              if (!isPopup) playerMsg.textContent = 'Playback blocked/failed: ' + err.message;
+          });
+      }
+      
+      if (isPopup) { hlsPopup = hlsInstance; } else { hlsMain = hlsInstance; }
+  }
+
+  function selectAndAutoPlayMain(entry) {
+      playerSearchBox.value = entry.title; 
+      playStream(entry.url, videoEl, false, entry);
+  }
+
+  // --- Popup Player Logic ---
+  function playInPopup(entry) {
+      playStream(entry.url, popupVideo, true, entry);
+      popupPlayerModal.classList.remove('hidden');
+      popupPlayerModal.classList.add('flex');
+  }
+
+  closePopup.addEventListener('click', () => {
+      hlsPopup = stopPlayback(hlsPopup, popupVideo);
+      popupPlayerModal.classList.add('hidden');
+      popupPlayerModal.classList.remove('flex');
+  });
+
+  // --- Main Player Logic ---
+  function navigateChannel(direction) {
+      if (filteredEntries.length === 0) return;
+
+      const currentUrl = currentEntryMain ? currentEntryMain.url : localStorage.getItem(LS_LAST_PLAYED_URL) || filteredEntries[0].url;
+      
+      let currentIndex = filteredEntries.findIndex(e => e.url === currentUrl);
+      if (currentIndex === -1) currentIndex = -1;
+
+      let nextIndex;
+
+      if (direction === 'next') {
+          nextIndex = (currentIndex + 1) % filteredEntries.length;
+      } else if (direction === 'prev') {
+          nextIndex = (currentIndex - 1 + filteredEntries.length) % filteredEntries.length;
+      } else {
+          return;
+      }
+
+      const nextEntry = filteredEntries[nextIndex];
+      selectAndAutoPlayMain(nextEntry);
+  }
+
+  // Auto-next handler
+  videoEl.addEventListener('ended', () => {
+    if (autoNext.checked) navigateChannel('next');
+  });
+  
+  // Previous/Next buttons
+  prevBtn.addEventListener('click', () => { navigateChannel('prev'); });
+  nextBtn.addEventListener('click', () => { navigateChannel('next'); });
+  
+  // PiP button
+  pipBtn.addEventListener('click', () => {
+      if (document.pictureInPictureEnabled && !videoEl.disablePictureInPicture) {
+          if (document.pictureInPictureElement) {
+              document.exitPictureInPicture();
+          } else {
+              videoEl.requestPictureInPicture().catch(e => {
+                  alert("Picture-in-Picture failed: " + e.message);
+              });
+          }
+      } else {
+          alert("Picture-in-Picture is not supported in this browser or is disabled.");
+      }
+  });
+
+
+  /********** event wiring **********/
+  // Fetch Handlers
+  fetchBtn.addEventListener('click', () => {
+    const url = m3uUrl.value.trim();
+    if (!url) { fetchStatus.textContent = 'Enter a URL.'; return; }
+    startFetch(url, false, false);
+  });
+
+  fetchProxyBtn.addEventListener('click', () => {
+    const url = m3uUrl.value.trim();
+    if (!url) { fetchStatus.textContent = 'Enter a URL.'; return; }
+    startFetch(url, true, false);
+  });
+  
+  // NEW: Mire Proxy Handler
+  fetchMireBtn.addEventListener('click', () => {
+    const url = m3uUrl.value.trim();
+    if (!url) { fetchStatus.textContent = 'Enter a URL.'; return; }
+    startFetch(url, false, true);
+  });
+  
+  // Full M3U Edit Handlers
+  reparseFull.addEventListener('click', () => {
+    const text = fullM3U.value;
+    updateFromText(text);
+  });
+
+  clearFull.addEventListener('click', () => {
+    if (!confirm('Are you sure you want to clear the M3U text and reset the playlist?')) return;
+    updateLinksAndM3UBoxes('', []);
+    entries = [];
+    updateGroupFilter();
+    renderPlaylist();
+    stopPlayback(hlsMain, videoEl);
+    saveLastPlaylist();
+  });
+  
+  // Copy All Full M3U Text
+  copyFullM3U.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(fullM3U.value);
+      alert('Full M3U text copied.');
+  });
+  
+  // M3U Text change auto-save
+  fullM3U.addEventListener('input', () => {
+      rawM3UText = fullM3U.value; 
+      saveLastPlaylist();
+  });
+
+
+  // Playlist Search & Filter Handlers
+  searchBox.addEventListener('input', () => {
+    renderPlaylist(searchBox.value, groupFilter.value, queueSearchBox.value);
+  });
+
+  groupFilter.addEventListener('change', () => {
+    renderPlaylist(searchBox.value, groupFilter.value, queueSearchBox.value);
+  });
+
+  // Copy Playlist (Filtered EXT-M3U)
+  copyFiltered.addEventListener('click', async () => {
+    const txt = entriesToM3U(filteredEntries);
+    await navigator.clipboard.writeText(txt);
+    alert('Filtered EXT-M3U playlist copied.');
+  });
+
+  downloadFiltered.addEventListener('click', () => {
+    const txt = entriesToM3U(filteredEntries);
+    downloadFile('filtered_playlist.m3u', txt);
+  });
+  
+  // Player Links Only Handlers
+  copyLinks.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(linksOnly.value);
+    alert('Links copied.');
+  });
+
+  downloadLinks.addEventListener('click', () => {
+    downloadFile('links_only.txt', linksOnly.value);
+  });
+  
+  // Main Player Search/Play Logic
+  playerSearchBox.addEventListener('input', () => {
+      const selectedOption = Array.from(streamListOptions.options).find(opt => opt.value === playerSearchBox.value);
+      if (selectedOption) {
+          const url = selectedOption.dataset.url;
+          const entry = filteredEntries.find(e => e.url === url);
+          if (entry) selectAndAutoPlayMain(entry);
+      }
+  });
+  
+  playBtn.addEventListener('click', () => {
+    const title = playerSearchBox.value;
+    if (!title) { alert('Select a stream using the search box.'); return; }
+    
+    const selectedOption = Array.from(streamListOptions.options).find(opt => opt.value === title);
+    if (selectedOption) {
+        const url = selectedOption.dataset.url;
+        const entry = entries.find(x => x.url === url);
+        playStream(url, videoEl, false, entry);
+    } else {
+        alert('Please select a channel from the suggestions.');
+    }
+  });
+
+  stopBtn.addEventListener('click', () => {
+    hlsMain = stopPlayback(hlsMain, videoEl);
+    currentEntryMain = null;
+    favBtn.innerHTML = '<i class="material-icons">star_border</i> <span id="favText">Favorite</span>';
+    renderPlaylist(searchBox.value, groupFilter.value, queueSearchBox.value);
+  });
+
+  favBtn.addEventListener('click', () => {
+    if (!currentEntryMain) { alert('No stream currently playing to favorite.'); return; }
+    const e = entries.find(x => x.url === currentEntryMain.url);
+    if (!e) return;
+    e.fav = !e.fav;
+    currentEntryMain.fav = e.fav; 
+    persistFavs();
+  });
+  
+  // Storage Handlers 
+  function saveNamedPlaylist(name) {
+    const raw = localStorage.getItem(LS_SAVED);
+    const saved = raw ? JSON.parse(raw) : {};
+    saved[name] = { rawM3U: rawM3UText, entries: entries, savedAt: Date.now() }; 
+    localStorage.setItem(LS_SAVED, JSON.stringify(saved));
+    loadSavedListNames();
+  }
+  function loadNamed(name) {
+    const raw = localStorage.getItem(LS_SAVED);
+    const saved = raw ? JSON.parse(raw) : {};
+    return saved[name] || null;
+  }
+  function deleteNamed(name) {
+    const raw = localStorage.getItem(LS_SAVED);
+    const saved = raw ? JSON.parse(raw) : {};
+    delete saved[name];
+    localStorage.setItem(LS_SAVED, JSON.stringify(saved));
+    loadSavedListNames();
+  }
+  
+  savePlaylist.addEventListener('click', () => {
+    const name = prompt('Enter a name for the current playlist:').trim();
+    if (!name) { alert('Name required'); return; }
+    if (!rawM3UText.trim()) { alert('Playlist is empty.'); return; }
+    saveNamedPlaylist(name);
+    alert('Saved "' + name + '"');
+  });
+
+  loadPlaylistBtn.addEventListener('click', () => {
+    const name = savedList.value;
+    if (!name) { alert('Select a saved playlist'); return; }
+    if (!confirm(`Load and replace current playlist with "${name}"?`)) return;
+    const data = loadNamed(name);
+    if (!data || !data.rawM3U) { alert('Data not found or corrupted.'); return; }
+    
+    rawM3UText = data.rawM3U;
+    entries = data.entries; 
+    
+    const favs = JSON.parse(localStorage.getItem(LS_FAVS) || '{}');
+    entries.forEach(e => { e.fav = !!favs[e.url]; });
+    
+    updateLinksAndM3UBoxes(rawM3UText, entries);
+    updateGroupFilter();
+    renderPlaylist(searchBox.value, groupFilter.value, queueSearchBox.value);
+    saveLastPlaylist();
+    stopPlayback(hlsMain, videoEl);
+    alert(`Playlist "${name}" loaded.`);
+  });
+
+  deleteSaved.addEventListener('click', () => {
+    const name = savedList.value;
+    if (!name) { alert('Select a saved playlist'); return; }
+    if (!confirm('Delete "' + name + '" ?')) return;
+    deleteNamed(name);
+    alert('Deleted ' + name);
+  });
+  
+  // Auto-restore last playlist on load
+  (function restoreLast() {
+    loadSavedListNames();
+    const last = JSON.parse(localStorage.getItem(LS_LAST) || 'null');
+    if (last && last.rawM3U && last.entries) {
+      rawM3UText = last.rawM3U;
+      entries = last.entries;
+      
+      const favs = JSON.parse(localStorage.getItem(LS_FAVS) || '{}');
+      entries.forEach(e => { e.fav = !!favs[e.url]; });
+      
+      updateLinksAndM3UBoxes(rawM3UText, entries);
+      updateGroupFilter();
+      renderPlaylist();
+    } else {
+        playlistBrowserSection.classList.add('hidden');
+    }
+    
+    const lastPlayedUrl = localStorage.getItem(LS_LAST_PLAYED_URL);
+    if (lastPlayedUrl) {
+      const lastEntry = entries.find(x => x.url === lastPlayedUrl);
+      if (lastEntry) {
+        playerSearchBox.value = lastEntry.title;
+        currentEntryMain = lastEntry; 
+        playerTitle.textContent = `${lastEntry.title} (Restored)`;
+        
+        // Restore fav button state
+        const isFav = lastEntry.fav;
+        favBtn.innerHTML = isFav ? '<i class="material-icons">star</i> <span id="favText">Favorited</span>' : '<i class="material-icons">star_border</i> <span id="favText">Favorite</span>';
+      }
+    }
+  })();
+  </script>
+</body>
+</html>
