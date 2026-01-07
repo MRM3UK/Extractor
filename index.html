@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>M3U Pro Elite Editor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.3.5/shaka-player.compiled.js"></script>
+
+<style>
+:root {
+  --bg: #020617; --card: #0f172a; --accent: #3b82f6;
+  --accent-glow: rgba(59, 130, 246, 0.5); --danger: #ef4444;
+  --text: #f8fafc; --muted: #64748b; --border: #1e293b;
+  --success: #10b981; --panel: rgba(30, 41, 59, 0.7);
+}
+
+* { box-sizing: border-box; font-family: 'Segoe UI', system-ui, -apple-system; transition: 0.2s; }
+body { margin: 0; background: var(--bg); color: var(--text); padding-bottom: 30px; overflow-x: hidden; }
+
+header {
+  background: rgba(2, 6, 23, 0.95); backdrop-filter: blur(10px);
+  padding: 12px 15px; position: sticky; top: 0; z-index: 100;
+  border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;
+}
+
+.container { width: 100%; max-width: 900px; margin: 0 auto; padding: 10px; }
+
+.glass-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 15px; padding: 15px; margin-bottom: 15px;
+}
+
+.input-row { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+@media (min-width: 600px) { .input-row { flex-direction: row; } }
+
+input, textarea, select {
+  width: 100%; background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px; color: #fff; font-size: 16px; outline: none;
+}
+
+/* FIXED CSS ERROR FROM PHOTO */
+label { 
+    font-size: 12px; 
+    color: var(--accent); 
+    font-weight: bold; 
+    margin-bottom: 5px; /* Added spacing */
+    margin-left: 2px; 
+    display: block; /* Ensures it stays above the input */
+    text-transform: uppercase;
+}
+
+.btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+@media (min-width: 600px) { .btn-grid { grid-template-columns: repeat(4, 1fr); } }
+
+.btn {
+  padding: 12px; border-radius: 10px; font-weight: bold; cursor: pointer; border: none;
+  display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 13px;
+}
+.btn-primary { background: var(--accent); color: white; }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn-danger { background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid var(--danger); }
+.btn-success { background: var(--success); color: white; }
+
+.tabs { display: flex; gap: 5px; margin-bottom: 15px; background: rgba(0,0,0,0.2); padding: 5px; border-radius: 12px; overflow-x: auto; }
+.tab { flex: 1; text-align: center; cursor: pointer; padding: 10px; border-radius: 8px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.tab.active { background: var(--accent); color: white; }
+
+.channel-card {
+  background: var(--card); border: 1px solid var(--border); padding: 10px;
+  border-radius: 12px; display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+}
+.channel-card img { width: 48px; height: 48px; border-radius: 8px; object-fit: contain; background: #000; }
+.channel-info { flex: 1; min-width: 0; cursor: pointer; }
+.channel-info h4 { margin: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.channel-info p { margin: 3px 0 0; font-size: 11px; color: var(--muted); }
+
+.modal { 
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85); 
+    display: none; align-items: center; justify-content: center; 
+    z-index: 1000; padding: 15px; backdrop-filter: blur(8px);
+}
+.modal-content { 
+    background: var(--card); width: 100%; max-width: 500px; 
+    padding: 20px; border-radius: 24px; border: 1px solid var(--border);
+    transform: scale(0.8); opacity: 0; transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.modal.active .modal-content { transform: scale(1); opacity: 1; }
+
+/* Notification System Styles */
+.toast-container {
+    position: fixed; top: 20px; right: 20px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 10px;
+}
+.toast {
+    min-width: 250px; padding: 15px 20px; border-radius: 12px;
+    background: var(--card); color: white; border-left: 4px solid var(--accent);
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: space-between;
+    animation: slideIn 0.3s ease forwards;
+}
+.toast.success { border-left-color: var(--success); }
+.toast.danger { border-left-color: var(--danger); }
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.loader-container {
+    position: fixed; top: 0; left: 0; width: 100%; height: 4px;
+    background: rgba(0,0,0,0.1); z-index: 9999; display: none;
+}
+.loader-bar {
+    width: 30%; height: 100%; background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: loadingMove 1s infinite linear;
+}
+@keyframes loadingMove {
+    0% { margin-left: -30%; }
+    100% { margin-left: 100%; }
+}
+
+.playlist-item {
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--border); padding: 12px; border-radius: 10px; margin-bottom: 8px;
+}
+</style>
+</head>
+<body>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<div class="loader-container" id="loader">
+    <div class="loader-bar"></div>
+</div>
+
+<header>
+  <h2 style="margin:0; font-size: 18px;">M3U PRO <span style="color:var(--accent)">ELITE</span></h2>
+  <div id="stats" style="background:var(--accent-glow); padding: 5px 12px; border-radius: 15px; font-size: 12px">0 Channels</div>
+</header>
+
+<div class="container">
+  <div class="glass-card">
+    <div class="input-row">
+      <input type="text" id="urlInput" placeholder="M3U URL (GitHub/is.gd)">
+      <button class="btn btn-primary" onclick="handleImport('url')">FETCH LINK</button>
+    </div>
+    <textarea id="rawInput" rows="2" placeholder="Paste Raw Content here..."></textarea>
+    <button class="btn btn-outline" style="width:100%; margin-top:10px" onclick="handleImport('raw')">PARSE RAW</button>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" id="tabChannels" onclick="switchTab('channels')">Playlist</div>
+    <div class="tab" id="tabSaved" onclick="switchTab('saved')">Saved Library</div>
+    <div class="tab" id="tabHistory" onclick="switchTab('history')">History (Cleaned)</div>
+  </div>
+
+  <div id="channelView">
+    <div id="controls" style="display:none" class="glass-card">
+        <div class="input-row">
+            <input id="searchBox" placeholder="Search Channels..." oninput="render()">
+            <select id="groupFilter" onchange="render()"></select>
+        </div>
+        <div class="btn-grid">
+            <button class="btn btn-outline" onclick="openModal('cleanModal')">CLEAN</button>
+            <button class="btn btn-success" onclick="exportM3U()">EXPORT</button>
+            <button class="btn btn-primary" onclick="openModal('saveLibModal')">SAVE TO LIB</button>
+            <button class="btn btn-danger" onclick="clearAll()">CLEAR ALL</button>
+        </div>
+    </div>
+    <div id="listContainer"></div>
+  </div>
+
+  <div id="savedView" style="display:none">
+    <div id="savedContainer"></div>
+  </div>
+
+  <div id="historyView" style="display:none">
+    <div class="btn-grid" style="margin-bottom: 15px;">
+        <button class="btn btn-success" style="grid-column: span 2;" onclick="reinstallAllHistory()">RE-INSTALL ALL</button>
+        <button class="btn btn-danger" style="grid-column: span 2;" onclick="clearHistory()">WIPE HISTORY</button>
+    </div>
+    <div id="historyContainer"></div>
+  </div>
+</div>
+
+<div class="modal" id="editModal">
+  <div class="modal-content">
+    <h3 style="margin-top:0">Edit Channel</h3>
+    <div style="display:grid; gap:15px">
+      <div>
+        <label>NAME</label>
+        <input id="editName" placeholder="Channel Name">
+      </div>
+      <div>
+        <label>GROUP</label>
+        <input id="editGroup" placeholder="e.g. Movies, Sports">
+      </div>
+      <div>
+        <label>LOGO LINK</label>
+        <input id="editLogo" placeholder="https://...">
+      </div>
+      <div>
+        <label>STREAM LINK</label>
+        <div style="display:flex; gap:5px">
+            <input id="editLink" placeholder="Stream URL">
+            <button class="btn btn-primary" onclick="copyFromInput('editLink')" style="width:80px; font-size:11px">COPY</button>
+        </div>
+      </div>
+    </div>
+    <div class="btn-grid" style="margin-top:25px">
+      <button class="btn btn-success" onclick="saveChanges()">SAVE</button>
+      <button class="btn btn-primary" onclick="playEdit()">PLAY</button>
+      <button class="btn btn-danger" onclick="deleteChannel()">REMOVE</button>
+      <button class="btn btn-outline" onclick="closeEdit()">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="playerModal">
+  <div class="modal-content" style="max-width: 800px;">
+    <video id="video" style="width:100%; border-radius:10px; background:#000" controls autoplay></video>
+    <button class="btn btn-outline" style="margin-top:15px; width:100%" onclick="closePlayer()">CLOSE PLAYER</button>
+  </div>
+</div>
+
+<div class="modal" id="linkViewModal">
+    <div class="modal-content">
+      <h3 style="margin-top:0">Source Link</h3>
+      <textarea id="historyLinkDisplay" rows="4" style="font-family: monospace; font-size: 13px; margin-bottom: 15px;"></textarea>
+      <div class="btn-grid">
+        <button class="btn btn-primary" onclick="copyFromInput('historyLinkDisplay')" style="grid-column: span 2;">COPY LINK</button>
+        <button class="btn btn-outline" onclick="closeModal('linkViewModal')" style="grid-column: span 2;">CLOSE</button>
+      </div>
+    </div>
+</div>
+
+<div class="modal" id="cleanModal">
+  <div class="modal-content">
+    <h3 style="margin-top:0">Remove Duplicates</h3>
+    <div class="clean-options">
+        <label class="clean-option" style="color: var(--text)">
+            <input type="radio" name="cleanType" value="link" checked>
+            <span>By Link (URL)</span>
+        </label>
+        <label class="clean-option" style="color: var(--text)">
+            <input type="radio" name="cleanType" value="name">
+            <span>By Channel Name</span>
+        </label>
+    </div>
+    <div class="btn-grid" style="margin-top:20px">
+      <button class="btn btn-primary" onclick="removeDuplicates()" style="grid-column: span 2;">START CLEANING</button>
+      <button class="btn btn-outline" onclick="closeModal('cleanModal')" style="grid-column: span 2;">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="saveLibModal">
+  <div class="modal-content">
+    <h3 style="margin-top:0">Save to Library</h3>
+    <input type="text" id="libPlaylistName" placeholder="Playlist Name">
+    <div class="btn-grid" style="margin-top:20px">
+      <button class="btn btn-success" onclick="confirmSavePlaylist()" style="grid-column: span 2;">SAVE PLAYLIST</button>
+      <button class="btn btn-outline" onclick="closeModal('saveLibModal')" style="grid-column: span 2;">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let channels = [], historyList = [], savedPlaylists = [], editIndex = null, player;
+
+window.onload = () => {
+  const saved = localStorage.getItem('elite_m3u_saved');
+  const savedHist = localStorage.getItem('elite_history_saved');
+  const savedLib = localStorage.getItem('elite_library_saved');
+  
+  if(saved) channels = JSON.parse(saved);
+  if(savedHist) historyList = JSON.parse(savedHist);
+  if(savedLib) savedPlaylists = JSON.parse(savedLib);
+  
+  shaka.polyfill.installAll();
+  player = new shaka.Player(document.getElementById('video'));
+  updateUI();
+};
+
+/* SYSTEM NOTIFICATION FUNCTION */
+function notify(message, type = 'success') {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<span>${message}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+async function handleImport(type) {
+  showLoader(true);
+  try {
+    let txt = "";
+    if(type === 'url') {
+      const url = document.getElementById('urlInput').value;
+      const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`);
+      txt = await res.text();
+    } else {
+      txt = document.getElementById('rawInput').value;
+    }
+    const parsed = parseM3U(txt);
+    channels = [...channels, ...parsed];
+    saveData();
+    updateUI();
+    notify(`Imported ${parsed.length} channels`);
+  } catch(e) { notify("Fetch failed", "danger"); }
+  showLoader(false);
+}
+
+function parseM3U(txt) {
+  const out = [];
+  const lines = txt.split(/\r?\n/);
+  let cur = null;
+  lines.forEach(l => {
+    l = l.trim();
+    if(l.startsWith("#EXTINF")) {
+      const name = l.split(",").pop();
+      const logo = (l.match(/tvg-logo="([^"]*)"/i) || [])[1] || "";
+      const group = (l.match(/group-title="([^"]*)"/i) || [])[1] || "General";
+      cur = { name, logo, group };
+    } else if(l && !l.startsWith("#") && cur) {
+      cur.link = l; out.push(cur); cur = null;
+    }
+  });
+  return out;
+}
+
+function updateUI() {
+  document.getElementById('controls').style.display = channels.length ? "block" : "none";
+  document.getElementById('stats').innerText = channels.length + " Channels";
+  updateGroups();
+  render();
+  renderHistory();
+  renderSaved();
+}
+
+function render() {
+  const list = document.getElementById('listContainer');
+  list.innerHTML = "";
+  const query = document.getElementById('searchBox').value.toLowerCase();
+  const group = document.getElementById('groupFilter').value;
+
+  channels.forEach((c, i) => {
+    if((!group || c.group === group) && c.name.toLowerCase().includes(query)) {
+      const card = document.createElement('div');
+      card.className = 'channel-card';
+      card.innerHTML = `
+        <img src="${c.logo}" onerror="this.src='https://placehold.co/50x50/1e293b/fff?text=TV'">
+        <div class="channel-info" onclick="openEdit(${i})">
+          <h4>${c.name}</h4>
+          <p>${c.group}</p>
+        </div>
+        <button class="btn btn-primary" style="border-radius:50%; width:40px; height:40px; padding:0" onclick="playStream('${c.link}')">▶</button>
+      `;
+      list.appendChild(card);
+    }
+  });
+}
+
+function renderHistory() {
+  const list = document.getElementById('historyContainer');
+  list.innerHTML = historyList.length ? "" : "<p style='text-align:center;color:gray'>No history available</p>";
+  historyList.forEach((c, i) => {
+    const card = document.createElement('div');
+    card.className = 'channel-card';
+    card.style.opacity = "0.9";
+    card.innerHTML = `
+      <img src="${c.logo}" onerror="this.src='https://placehold.co/50x50/1e293b/fff?text=TV'">
+      <div class="channel-info">
+        <h4>${c.name}</h4>
+        <p onclick="showHistoryLink('${c.link.replace(/'/g, "\\'")}')" style="text-decoration: underline; color: var(--accent); cursor:pointer">Source link</p>
+      </div>
+      <button class="btn btn-success" style="padding:5px 10px" onclick="restoreChannel(${i})">RE-IMPORT</button>`;
+    list.appendChild(card);
+  });
+}
+
+function showHistoryLink(url) {
+    document.getElementById('historyLinkDisplay').value = url;
+    openModal('linkViewModal');
+}
+
+function copyFromInput(id) {
+    const input = document.getElementById(id);
+    input.select();
+    document.execCommand('copy');
+    notify("Copied to Clipboard!");
+}
+
+function removeDuplicates() {
+  const initial = channels.length;
+  const type = document.querySelector('input[name="cleanType"]:checked').value;
+  const seenLinks = new Set();
+  const seenNames = new Set();
+  const cleaned = [];
+  
+  channels.forEach(c => {
+    const linkKey = c.link.trim();
+    const nameKey = c.name.toLowerCase().trim();
+    let isDuplicate = (type === 'link') ? seenLinks.has(linkKey) : seenNames.has(nameKey);
+
+    if(isDuplicate) { historyList.unshift(c); } 
+    else { 
+        seenLinks.add(linkKey); 
+        seenNames.add(nameKey); 
+        cleaned.push(c); 
+    }
+  });
+  
+  const removedCount = initial - cleaned.length;
+  channels = cleaned;
+  closeModal('cleanModal');
+  saveData(); updateUI();
+  notify(`Removed ${removedCount} duplicates`);
+}
+
+function openEdit(i) {
+  editIndex = i;
+  const c = channels[i];
+  document.getElementById('editName').value = c.name;
+  document.getElementById('editGroup').value = c.group;
+  document.getElementById('editLogo').value = c.logo;
+  document.getElementById('editLink').value = c.link;
+  openModal('editModal');
+}
+
+function saveChanges() {
+  channels[editIndex] = {
+    name: document.getElementById('editName').value,
+    group: document.getElementById('editGroup').value,
+    logo: document.getElementById('editLogo').value,
+    link: document.getElementById('editLink').value
+  };
+  closeModal('editModal'); saveData(); updateUI();
+  notify("Changes Saved");
+}
+
+function deleteChannel() {
+  historyList.unshift(channels[editIndex]);
+  channels.splice(editIndex, 1);
+  closeModal('editModal'); saveData(); updateUI();
+  notify("Channel Moved to History", "danger");
+}
+
+function restoreChannel(i) {
+  channels.push(historyList[i]);
+  historyList.splice(i, 1);
+  saveData(); updateUI();
+  notify("Channel Restored");
+}
+
+function exportM3U() {
+  let m3u = "#EXTM3U\n";
+  channels.forEach(c => m3u += `#EXTINF:-1 tvg-logo="${c.logo}" group-title="${c.group}",${c.name}\n${c.link}\n`);
+  const blob = new Blob([m3u], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = "Playlist_Elite.m3u";
+  a.click();
+  notify("Playlist Exported");
+}
+
+function saveData() {
+  localStorage.setItem('elite_m3u_saved', JSON.stringify(channels));
+  localStorage.setItem('elite_history_saved', JSON.stringify(historyList));
+}
+
+function clearAll() { 
+    if(confirm("Clear Playlist?")) { 
+        channels = []; 
+        saveData(); 
+        updateUI(); 
+        notify("Playlist Cleared", "danger");
+    } 
+}
+
+function updateGroups() {
+  const groups = [...new Set(channels.map(c => c.group))];
+  const sel = document.getElementById('groupFilter');
+  sel.innerHTML = '<option value="">All Groups</option>';
+  groups.forEach(g => sel.innerHTML += `<option value="${g}">${g}</option>`);
+}
+
+function playStream(url) {
+  openModal('playerModal');
+  player.load(url).catch(() => notify("Stream Offline", "danger"));
+}
+
+function switchTab(tab) {
+  document.getElementById('channelView').style.display = tab === 'channels' ? 'block' : 'none';
+  document.getElementById('historyView').style.display = tab === 'history' ? 'block' : 'none';
+  document.getElementById('savedView').style.display = tab === 'saved' ? 'block' : 'none';
+  document.getElementById('tabChannels').className = 'tab ' + (tab === 'channels' ? 'active' : '');
+  document.getElementById('tabHistory').className = 'tab ' + (tab === 'history' ? 'active' : '');
+  document.getElementById('tabSaved').className = 'tab ' + (tab === 'saved' ? 'active' : '');
+}
+
+function openModal(id) {
+    const el = document.getElementById(id);
+    el.style.display = "flex";
+    setTimeout(() => el.classList.add('active'), 10);
+}
+
+function closeModal(id) {
+    const el = document.getElementById(id);
+    el.classList.remove('active');
+    setTimeout(() => el.style.display = "none", 300);
+}
+
+function closePlayer() { document.getElementById('video').pause(); closeModal('playerModal'); }
+function closeEdit() { closeModal('editModal'); }
+function playEdit() { playStream(document.getElementById('editLink').value); closeModal('editModal'); }
+function clearHistory() { historyList = []; saveData(); renderHistory(); notify("History Wiped", "danger"); }
+function showLoader(show) { document.getElementById('loader').style.display = show ? "block" : "none"; }
+
+function reinstallAllHistory() {
+    if(historyList.length === 0) return;
+    if(confirm(`Re-install all ${historyList.length} channels?`)) {
+        channels = [...channels, ...historyList];
+        historyList = [];
+        saveData();
+        updateUI();
+        notify("History Re-installed");
+    }
+}
+
+function renderSaved() {
+    const container = document.getElementById('savedContainer');
+    container.innerHTML = savedPlaylists.length ? "" : "<p style='text-align:center;color:gray'>No saved playlists</p>";
+    savedPlaylists.forEach((pl, i) => {
+        const item = document.createElement('div');
+        item.className = 'playlist-item';
+        item.innerHTML = `
+            <div>
+                <div style="font-weight:bold">${pl.name}</div>
+                <div style="font-size:11px; color:var(--muted)">${pl.data.length} Channels</div>
+            </div>
+            <div style="display:flex; gap:5px">
+                <button class="btn btn-success" style="padding:5px 10px" onclick="loadSaved(${i})">LOAD</button>
+                <button class="btn btn-danger" style="padding:5px 10px" onclick="deleteSaved(${i})">✕</button>
+            </div>
+        `;
+        container.appendChild(item);
+    });
+}
+
+function confirmSavePlaylist() {
+    const nameInput = document.getElementById('libPlaylistName');
+    const name = nameInput.value.trim();
+    if(name) {
+        savedPlaylists.push({ name: name, data: [...channels], date: new Date().toLocaleDateString() });
+        localStorage.setItem('elite_library_saved', JSON.stringify(savedPlaylists));
+        nameInput.value = "";
+        closeModal('saveLibModal');
+        renderSaved();
+        notify("Library Updated");
+    }
+}
+
+function loadSaved(i) {
+    channels = [...savedPlaylists[i].data];
+    saveData(); updateUI(); switchTab('channels');
+    notify("Library Loaded");
+}
+
+function deleteSaved(i) {
+    if(confirm("Delete this?")) {
+        savedPlaylists.splice(i, 1);
+        localStorage.setItem('elite_library_saved', JSON.stringify(savedPlaylists));
+        renderSaved();
+        notify("Deleted from Library", "danger");
+    }
+}
+</script>
+</body>
+</html>
